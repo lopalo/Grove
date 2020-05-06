@@ -31,6 +31,9 @@ val iterateFromKey<'U, 'T when 'T :> IKeyable<'U> and 'U : comparison>
 val range<'U, 'T when 'T :> IKeyable<'U> and 'U : comparison>
     : startKey:'U -> endKey:'U -> tree:BTree<'T,'U> -> seq<'T>
 
+val removeByKey<'U, 'T when 'T :> IKeyable<'U> and 'U : comparison>
+    : key:'U -> tree:BTree<'T, 'U> -> BTree<'T, 'U>
+
 type V<'T when 'T : comparison> =
     | V of 'T
     interface IKeyable<'T>

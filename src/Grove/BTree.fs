@@ -20,7 +20,11 @@ type InsertResult<'T, 'U when 'T :> IKeyable<'U> and 'U : comparison> =
     | Single of Node<'T, 'U>
     | Split of Node<'T, 'U> * 'T * Node<'T, 'U>
 
-type RemoveResult<'T> = ValueOption<'T>
+[<Struct>]
+type RemoveResult<'T, 'U when 'T :> IKeyable<'U> and 'U : comparison> =
+    | Blank
+    | BlankWithSubnode of node : Node<'T, 'U>
+    | Node of Node<'T, 'U>
 
 let empty<'T, 'U when 'T :> IKeyable<'U> and 'U : comparison> : BTree<'T, 'U> =
     Empty
@@ -131,6 +135,12 @@ let rec searchByKey' key =
         else if key < rightElKey then searchByKey' key middle
         else searchByKey' key right
 
+
+let searchByKey key =
+    function
+    | Empty -> None
+    | Filled node -> searchByKey' key node
+
 let rec iterateFromKey' key =
     function
     | OneData el ->
@@ -158,11 +168,6 @@ let rec iterateFromKey' key =
             yield! iterateFromKey' key right
         }
 
-let searchByKey key =
-    function
-    | Empty -> None
-    | Filled node -> searchByKey' key node
-
 let iterateFromKey key =
     function
     | Empty -> Seq.empty
@@ -171,6 +176,135 @@ let iterateFromKey key =
 let range startKey endKey tree =
     iterateFromKey startKey tree
     |> Seq.takeWhile (fun el -> elementKey el <= endKey)
+
+let rec minElement =
+    function
+    | OneData el -> el
+    | TwoData(el, _) -> el
+    | TwoNode(node, _, _) -> minElement node
+    | ThreeNode(node, _, _, _, _) -> minElement node
+
+
+let prepend removeResult element node =
+    match (removeResult, node) with
+    | Blank, OneData el -> Single(TwoData(element, el))
+    | Blank, TwoData(leftEl, rightEl) ->
+        Split(OneData element, leftEl, OneData rightEl)
+    | BlankWithSubnode node, TwoNode(left, el, right) ->
+        Single(ThreeNode(node, element, left, el, right))
+    | BlankWithSubnode node, ThreeNode(left, leftEl, middle, rightEl, right) ->
+        Split
+            (TwoNode(node, element, left), leftEl,
+             TwoNode(middle, rightEl, right))
+    | _ -> failwith "Invariant violation"
+
+
+
+let append node element removeResult =
+    match (node, removeResult) with
+    | OneData el, Blank -> Single(TwoData(el, element))
+    | TwoData(leftEl, rightEl), Blank ->
+        Split(OneData leftEl, rightEl, OneData element)
+    | TwoNode(left, el, right), BlankWithSubnode node ->
+        Single(ThreeNode(left, el, right, element, node))
+    | ThreeNode(left, leftEl, middle, rightEl, right), BlankWithSubnode node ->
+        Split
+            (TwoNode(left, leftEl, middle), rightEl,
+             TwoNode(right, element, node))
+    | _ -> failwith "Invariant violation"
+
+let rec removeByKey' key =
+    function
+    | OneData el as node ->
+        if key = elementKey el then Blank else Node node
+    | TwoData(leftEl, rightEl) as node ->
+        if key = elementKey leftEl then Node(OneData rightEl)
+        else if key = elementKey rightEl then Node(OneData leftEl)
+        else Node node
+    | TwoNode(left, el, right) ->
+        let elKey = elementKey el
+
+        let struct (key, el) =
+            if key = elKey then
+                let newElement = minElement right
+                (elementKey newElement, newElement)
+            else
+                (key, el)
+        if key < elKey then
+            match removeByKey' key left with
+            | Blank
+            | BlankWithSubnode _ as res ->
+                match prepend res el right with
+                | Single node -> BlankWithSubnode node
+                | Split(left, el, right) -> Node(TwoNode(left, el, right))
+            | Node left -> Node(TwoNode(left, el, right))
+        else
+            match removeByKey' key right with
+            | Blank
+            | BlankWithSubnode _ as res ->
+                match append left el res with
+                | Single node -> BlankWithSubnode node
+                | Split(left, el, right) -> Node(TwoNode(left, el, right))
+            | Node right -> Node(TwoNode(left, el, right))
+    | ThreeNode(left, leftEl, middle, rightEl, right) ->
+        let leftElKey = elementKey leftEl
+        let rightElKey = elementKey rightEl
+
+        let struct (key, leftEl) =
+            if key = leftElKey then
+                let newElement = minElement middle
+                (elementKey newElement, newElement)
+            else
+                (key, leftEl)
+
+        let struct (key, rightEl) =
+            if key = rightElKey then
+                let newElement = minElement right
+                (elementKey newElement, newElement)
+            else
+                (key, rightEl)
+
+        if key < leftElKey then
+            match removeByKey' key left with
+            | Blank
+            | BlankWithSubnode _ as res ->
+                match prepend res leftEl middle with
+                | Single middle -> Node(TwoNode(middle, rightEl, right))
+                | Split(left, leftEl, middle) ->
+                    Node(ThreeNode(left, leftEl, middle, rightEl, right))
+            | Node left -> Node(ThreeNode(left, leftEl, middle, rightEl, right))
+        else if key < rightElKey then
+            match removeByKey' key middle with
+            | Blank
+            | BlankWithSubnode _ as res ->
+                match append left leftEl res with
+                | Single left -> Node(TwoNode(left, rightEl, right))
+                | Split(left, leftEl, middle) ->
+                    Node(ThreeNode(left, leftEl, middle, rightEl, right))
+            | Node middle ->
+                Node(ThreeNode(left, leftEl, middle, rightEl, right))
+        else
+            match removeByKey' key right with
+            | Blank
+            | BlankWithSubnode _ as res ->
+                match append middle rightEl res with
+                | Single middle -> Node(TwoNode(left, leftEl, middle))
+                | Split(middle, rightEl, right) ->
+                    Node(ThreeNode(left, leftEl, middle, rightEl, right))
+            | Node right ->
+                Node(ThreeNode(left, leftEl, middle, rightEl, right))
+
+
+
+let removeByKey key =
+    function
+    | Empty -> Empty
+    | Filled node ->
+        match removeByKey' key node with
+        | Blank -> Empty
+        | BlankWithSubnode node -> Filled node
+        | Node node -> Filled node
+
 
 type V<'T when 'T : comparison> =
     | V of 'T
@@ -197,6 +331,20 @@ searchByKey 42 t, searchByKey 888 t
 range -10 5 t |> List.ofSeq
 range 15 20 t |> List.ofSeq
 range 125 1000 t |> List.ofSeq
+
+let t' =
+    [10 .. 200]
+    |> List.fold (fun x k -> removeByKey k x) t
+
+let t'' =
+    [1 .. 64]
+    |> List.sortBy (fun _ -> r.Next(1000))
+    |> List.fold (fun x k -> removeByKey k x) t
+
+let t''' =
+    [65 .. 128]
+    |> List.fold (fun x k -> removeByKey k x) t''
+
 *)
 
 
