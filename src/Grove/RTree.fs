@@ -56,14 +56,14 @@ let insertCost element container =
     let s' = mergeRectangles container element |> semiperimeter
     struct (s' - s, s)
 
-let isIdentical = LanguagePrimitives.PhysicalEquality
+let areIdentical = LanguagePrimitives.PhysicalEquality
 
 let splitNodes (nodes : Nodes<_>) =
 
     let pairs =
         [|for x in nodes do
             for y in nodes do
-                if not (isIdentical x y) then struct (nodeRect x, nodeRect y)|]
+                if not (areIdentical x y) then struct (nodeRect x, nodeRect y)|]
 
     let struct (x, y) =
         Array.maxBy (fun (struct (x, y)) -> insertCost x y) pairs
@@ -100,11 +100,11 @@ let rec insert' newElement =
         | Single node ->
             let subnodes =
                 Array.map
-                    (fun n -> if isIdentical subnode n then node else n)
+                    (fun n -> if areIdentical subnode n then node else n)
                     subnodes
             Single(Node(rect, subnodes))
         | Split(node, node') ->
-            Array.filter (isIdentical subnode >> not) subnodes
+            Array.filter (areIdentical subnode >> not) subnodes
             |> Array.append [|node; node'|]
             |> ensureMaxSize rect
 
@@ -115,6 +115,27 @@ let insert newElement root =
         let rect = mergeRectangles (nodeRect node) (nodeRect node')
         Node(rect, [|node; node'|])
 
+
+let linesOverlap (a, a') (b, b') =
+    a <= b' && b <= a'
+
+let overlap rect rect' =
+    linesOverlap (rect.X, rect.X') (rect'.X, rect'.X')
+    && linesOverlap (rect.Y, rect.Y') (rect'.Y, rect'.Y')
+
+
+let rec range queryBox =
+    function
+    | Data el ->
+        if overlap queryBox (elementRect el) then
+            Seq.singleton el
+        else
+            Seq.empty
+    | Node(rect, subnodes) ->
+        if overlap queryBox rect
+        then Seq.ofArray subnodes |> Seq.collect (range queryBox)
+        else Seq.empty
+
 type P =
     | P of x : float * y : float
     interface IRectangular with
@@ -124,7 +145,9 @@ type P =
              Y = y
              X' = x
              Y' = y}
+
 (*
+//Helpers for testing in REPL
 open Grove.RTree
 
 let vals =
@@ -144,6 +167,17 @@ let t =
     |> List.sortBy (fun _ -> r.Next(1000))
     |> List.fold (fun x v -> insert v x) empty
 
-*)
+range
+    ({X = -10.0
+      Y = -2.0
+      X' = 3.0
+      Y' = 3.0}) t
+|> List.ofSeq
 
-//Helpers for testing in REPL
+range
+    {X = 4.0
+     Y = 3.0
+     X' = 8.0
+     Y' = 5.0} t
+|> List.ofSeq
+*)

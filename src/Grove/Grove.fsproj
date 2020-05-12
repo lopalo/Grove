@@ -7,13 +7,13 @@
   <ItemGroup>
     <Compile Include="BTree.fsi" />
     <Compile Include="BTree.fs" />
+    <Compile Include="RTree.fsi" />
     <Compile Include="RTree.fs" />
   </ItemGroup>
 
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
     <DefineConstants>TRACE</DefineConstants>
     <PlatformTarget>AnyCPU</PlatformTarget>
-    <OtherFlags>--sig:Signatures.fsi</OtherFlags>
   </PropertyGroup>
 
 </Project>
