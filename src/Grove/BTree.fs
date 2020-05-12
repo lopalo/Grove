@@ -29,7 +29,6 @@ type RemoveResult<'T, 'U when 'T :> IKeyable<'U> and 'U : comparison> =
 let empty<'T, 'U when 'T :> IKeyable<'U> and 'U : comparison> : BTree<'T, 'U> =
     Empty
 
-
 let elementKey element =
     (element :> IKeyable<'T>).GetKey()
 
